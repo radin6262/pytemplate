@@ -13,7 +13,7 @@ from tqdm import tqdm
 TEMPLATES_DIR = Path(__file__).parent / "templates"
 
 # Public template registry - Replace with your actual registry URL
-REGISTRY_URL = "https://raw.githubusercontent.com/pytemplate/remote/registry/registry.json"
+REGISTRY_URL = "https://raw.githubusercontent.com/radin6262/pytemplate/refs/heads/main/remote/registry/registry.json"
 
 
 def color(text: str, fg: str = None, bold: bool = False, dim: bool = False) -> str:

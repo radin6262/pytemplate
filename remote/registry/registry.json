@@ -1,3 +1,18 @@
 {
-  "templates": {}
+  "templates": [
+    {
+      "name": "flet",
+      "description": "Flet framework project template",
+      "author": "radin6262",
+      "version": "1.0.0",
+      "category": "desktop",
+      "tags": ["flet", "gui", "mobile", "flutter-like"],
+      "url": "https://raw.githubusercontent.com/radin6262/pytemplate/refs/heads/main/remote/flet.setup",
+      "references": [
+        "flet-readme"
+      ],
+      "stars": 5,
+      "active": true
+    },
+  ]
 }

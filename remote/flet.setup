@@ -11,8 +11,8 @@
 {name}/lib/
 
 # Project configuration
-{name}/pyproject.toml: @flet-pyproject
-{name}/README.md @general-readme
+{name}/pyproject.toml
+{name}/README.md @flet-readme
 {name}/.gitignore
 {name}/.env
 {name}/requirements.txt

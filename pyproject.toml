@@ -1,5 +1,5 @@
 [project]
-name = "pytemplate"
+name = "pytemplatecli"
 version = "0.4.0"
 description = "Python Template System - Make projects with prebuilt templates"
 readme = "README.md"

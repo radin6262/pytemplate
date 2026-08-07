@@ -6,7 +6,7 @@
       <excludeFolder url="file://$MODULE_DIR$/python-web/.venv" />
       <excludeFolder url="file://$MODULE_DIR$/pyqt5/.venv" />
     </content>
-    <orderEntry type="jdk" jdkName="Python 3.14 (PyCLI)" jdkType="Python SDK" />
+    <orderEntry type="jdk" jdkName="Python 3.14 (pytemplate) (2)" jdkType="Python SDK" />
     <orderEntry type="sourceFolder" forTests="false" />
   </component>
 </module>

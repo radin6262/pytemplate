@@ -31,3 +31,6 @@ pytemplate = "pytemplate.cli:main"
 Homepage = "https://github.com/radin6262/pytemplate"
 Repository = "https://github.com/radin6262/pytemplate"
 Issues = "https://github.com/radin6262/pytemplate"
+
+[tool.setuptools.packages.find]
+where = ["src"]

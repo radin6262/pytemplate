@@ -1,0 +1,2 @@
+[console_scripts]
+pytemplate = pytemplate.cli:main

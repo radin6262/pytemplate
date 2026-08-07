@@ -1,0 +1,25 @@
+Metadata-Version: 2.4
+Name: pytemplatecli
+Version: 0.5.0
+Summary: Python Template System - Make projects with prebuilt templates
+Author-email: radin6262 <none@gmail.com>
+License-Expression: MIT
+Project-URL: Homepage, https://github.com/radin6262/pytemplate
+Project-URL: Repository, https://github.com/radin6262/pytemplate
+Project-URL: Issues, https://github.com/radin6262/pytemplate
+Classifier: Development Status :: 4 - Beta
+Classifier: Intended Audience :: Developers
+Classifier: Topic :: Software Development :: Code Generators
+Classifier: Programming Language :: Python :: 3
+Classifier: Programming Language :: Python :: 3.8
+Classifier: Programming Language :: Python :: 3.9
+Classifier: Programming Language :: Python :: 3.10
+Classifier: Programming Language :: Python :: 3.11
+Classifier: Programming Language :: Python :: 3.12
+Classifier: Programming Language :: Python :: 3.13
+Classifier: Programming Language :: Python :: 3.14
+Requires-Python: >=3.8
+Description-Content-Type: text/markdown
+Requires-Dist: click>=8.0.0
+Requires-Dist: requests>=2.28.0
+Requires-Dist: tqdm>=4.65.0

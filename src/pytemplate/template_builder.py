@@ -6,7 +6,7 @@ import tempfile
 import os
 from pathlib import Path
 from typing import List, Dict, Optional
-from filenav import CLIFileManager
+from .filenav import CLIFileManager
 
 
 def color(text: str, fg: str = None, bold: bool = False, dim: bool = False) -> str:

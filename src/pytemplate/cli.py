@@ -3,9 +3,9 @@ import os
 import sys
 import click
 from pathlib import Path
-from setup_interpreter import run_setup_commands, ask_input
-from template_builder import build_template_interactive, quick_template, list_available_commands
-from template_manager import register_commands
+from .setup_interpreter import run_setup_commands, ask_input
+from .template_builder import build_template_interactive, quick_template, list_available_commands
+from .template_manager import register_commands
 
 TEMPLATES_DIR = Path(__file__).parent / "templates"
 

@@ -1,1 +1,5 @@
-prune remote/
+recursive-include src/pytemplate *.py
+recursive-include src/pytemplate/templates *.setup
+recursive-include src/pytemplate/templates @*
+include README.md
+include LICENSE

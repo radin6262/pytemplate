@@ -25,7 +25,7 @@ dependencies = [
 ]
 
 [project.scripts]
-pytemplate = "pytemplate.cli:main"
+pytemplate = "cli:main"
 
 [project.urls]
 Homepage = "https://github.com/radin6262/pytemplate"

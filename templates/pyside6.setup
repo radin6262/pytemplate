@@ -1,0 +1,129 @@
+﻿# PySide6 project structure
+{name}/src/
+{name}/src/ui/
+{name}/src/ui/widgets/
+{name}/src/ui/dialogs/
+{name}/src/ui/layouts/
+{name}/src/resources/
+{name}/src/resources/icons/
+{name}/src/resources/styles/
+{name}/src/resources/images/
+{name}/tests/
+{name}/docs/
+
+# Main application files
+{name}/src/main.py: @pyside6-main
+{name}/src/app.py: @pyside6-app
+{name}/src/window.py: @pyside6-window
+
+# UI components
+{name}/src/ui/widgets/__init__.py: @pyside6-widgets-init
+{name}/src/ui/widgets/custom_button.py: @pyside6-custom-button
+{name}/src/ui/widgets/custom_table.py: @pyside6-custom-table
+{name}/src/ui/dialogs/__init__.py: @pyside6-dialogs-init
+{name}/src/ui/dialogs/about.py: @pyside6-about-dialog
+{name}/src/ui/layouts/__init__.py: @pyside6-layouts-init
+{name}/src/ui/layouts/main_layout.py: @pyside6-main-layout
+
+# Application logic
+{name}/src/controllers/
+{name}/src/controllers/main_controller.py: @pyside6-controller-main
+{name}/src/models/
+{name}/src/models/app_model.py: @pyside6-model-app
+{name}/src/models/data_manager.py: @pyside6-data-manager
+{name}/src/utils/
+{name}/src/utils/config.py: @pyside6-utils-config
+{name}/src/utils/logger.py: @pyside6-utils-logger
+{name}/src/utils/helpers.py: @pyside6-utils-helpers
+
+# Resources and styles
+{name}/src/resources/styles/main.qss: @pyside6-styles-main
+{name}/src/resources/styles/dark.qss: @pyside6-styles-dark
+{name}/src/resources/styles/light.qss: @pyside6-styles-light
+
+# Project configuration
+{name}/pyproject.toml: @pyside6-pyproject
+{name}/README.md @general-readme
+{name}/.gitignore: @python.gitignore
+{name}/requirements.txt
+{name}/requirements-dev.txt
+
+[setup]
+# Ask for configuration
+ask "App name" default="${name}" var="app_name"
+ask "Organization name" default="MyOrg" var="org_name"
+ask "Author name" default="Developer" var="author"
+ask "Python version (3.8, 3.9, 3.10, 3.11, 3.12)" default="3.11" var="py_version"
+ask "PySide6 version (latest, 6.5.0, 6.4.0)" default="latest" var="pyside6_version"
+ask "Use dark theme by default?" default="n" var="dark_theme"
+
+# Create additional folders
+makefolder src/ui/widgets/custom
+makefolder src/ui/widgets/custom/__pycache__
+makefolder src/resources/icons/actions
+makefolder src/resources/icons/status
+makefolder src/resources/icons/devices
+makefolder src/resources/translations
+makefolder src/plugins
+makefolder src/plugins/__init__.py
+makefolder tests/unit
+makefolder tests/integration
+
+# Create test files
+makefile tests/__init__.py ""
+makefile tests/test_main.py "@pyside6-test-main"
+makefile tests/conftest.py "@pyside6-conftest"
+
+
+# Create requirements files
+makefile requirements.txt "# PySide6 dependencies\n# Add your requirements here\n"
+editfile requirements.txt append "PySide6${pyside6_version != "latest" ? "==" + pyside6_version : ""}"
+editfile requirements.txt append "python-dotenv>=1.0.0"
+editfile requirements.txt append "pyyaml>=6.0"
+editfile requirements.txt append "pillow>=10.0.0"
+editfile requirements.txt append "numpy>=1.24.0"
+editfile requirements.txt append "requests"
+
+makefile requirements-dev.txt "# Development dependencies\n# Add dev requirements here\n"
+editfile requirements-dev.txt append "pytest>=7.0.0"
+editfile requirements-dev.txt append "pytest-qt>=4.0.0"
+editfile requirements-dev.txt append "pytest-cov>=4.0.0"
+editfile requirements-dev.txt append "pytest-xdist>=3.0.0"
+editfile requirements-dev.txt append "black>=23.0.0"
+editfile requirements-dev.txt append "flake8>=6.0.0"
+editfile requirements-dev.txt append "mypy>=1.0.0"
+editfile requirements-dev.txt append "pre-commit>=3.0.0"
+editfile requirements-dev.txt append "qdarkstyle>=3.0.0"
+
+# Add comment headers
+editfile requirements.txt prepend "# Auto-generated requirements for ${app_name}"
+editfile requirements-dev.txt prepend "# Development dependencies for ${app_name}"
+
+# Setup environment
+makevenv ${py_version}
+
+# Install from requirements.txt
+installreq
+
+# Install development dependencies
+installreqdev
+
+
+echo Project ${app_name} is ready!
+echo Organization: ${org_name}
+echo Author: ${author}
+echo PySide6 Version: ${pyside6_version}
+echo
+echo To run your app:
+echo cd ${name}
+echo source .venv/bin/activate  # or .venv\\Scripts\\activate on Windows
+echo python src/main.py
+echo
+echo To run tests:
+echo pytest tests/
+echo
+echo To generate UI files from .ui:
+echo pyside6-uic input.ui -o output.py
+echo
+echo To compile resources:
+echo pyside6-rcc resources.qrc -o resources_rc.py

@@ -1,0 +1,16 @@
+﻿# ${name} - Python Project
+
+> Generated with PyCLI
+
+## Quick Start
+
+### 1. Activate Virtual Environment
+```bash
+# Linux/macOS
+source .venv/bin/activate
+
+# Windows
+.venv\Scripts\activate
+
+### 2. write some code
+### 3. run <pre> py main.py </pre>

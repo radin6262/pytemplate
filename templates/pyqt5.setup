@@ -1,0 +1,9 @@
+[setup]
+makefile main.py "# main app entry point"
+makefile requirements.txt "PyQt5"
+makevenv 3.14
+installreq
+echo "PyQt5 project built."
+echo "To run your app:"
+echo "source .venv/bin/activate  # or .venv\\Scripts\\activate on Windows"
+echo "python main.py"

@@ -30,6 +30,6 @@ dependencies = [
 pytemplate = "pytemplate.cli:main"
 
 [project.urls]
-Homepage = "https://github.com/yourusername/pytemplate"
-Repository = "https://github.com/yourusername/pytemplate"
-Issues = "https://github.com/yourusername/pytemplate/issues"
+Homepage = "https://github.com/radin6262/pytemplate"
+Repository = "https://github.com/radin6262/pytemplate"
+Issues = "https://github.com/radin6262/pytemplate"

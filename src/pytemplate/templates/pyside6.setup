@@ -1,4 +1,4 @@
-﻿# PySide6 project structure
+# PySide6 project structure
 {name}/src/
 {name}/src/ui/
 {name}/src/ui/widgets/
@@ -32,19 +32,19 @@
 {name}/src/models/app_model.py: @pyside6-model-app
 {name}/src/models/data_manager.py: @pyside6-data-manager
 {name}/src/utils/
-{name}/src/utils/config.py: @pyside6-utils-config
-{name}/src/utils/logger.py: @pyside6-utils-logger
-{name}/src/utils/helpers.py: @pyside6-utils-helpers
+{name}/src/utils/config.py
+{name}/src/utils/logger.py
+{name}/src/utils/helpers.py
 
 # Resources and styles
-{name}/src/resources/styles/main.qss: @pyside6-styles-main
-{name}/src/resources/styles/dark.qss: @pyside6-styles-dark
-{name}/src/resources/styles/light.qss: @pyside6-styles-light
+{name}/src/resources/styles/main.qss
+{name}/src/resources/styles/dark.qss
+{name}/src/resources/styles/light.qss
 
 # Project configuration
-{name}/pyproject.toml: @pyside6-pyproject
-{name}/README.md @general-readme
-{name}/.gitignore: @python.gitignore
+{name}/pyproject.toml
+{name}/README.md: @general-readme
+{name}/.gitignore
 {name}/requirements.txt
 {name}/requirements-dev.txt
 

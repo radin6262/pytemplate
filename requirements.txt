@@ -1,3 +1,4 @@
-tqdm
-click
 requests
+urwid
+click
+tqdm

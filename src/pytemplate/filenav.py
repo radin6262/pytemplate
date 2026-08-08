@@ -1,508 +1,547 @@
-﻿"""CLI-based file system navigator for template builder."""
+﻿"""Urwid file navigator (loop‑less, to be embedded in another main loop)."""
 
-import click
 import shutil
 import tempfile
-import os
 from pathlib import Path
-from typing import List, Optional, Tuple
+from typing import List, Optional, Callable
 
-class CLIFileManager:
-    """CLI-based file manager with navigation and file operations."""
+import urwid
+from urwid import (
+    Widget, Text, ListBox, SimpleListWalker, Button,
+    Edit, Pile, Divider, AttrMap, WidgetWrap,
+    GridFlow, LineBox
+)
 
-    def __init__(self, template_name: str, initial_dir: str = "."):
+
+class FileEntry(WidgetWrap):
+    """A selectable file/directory entry."""
+
+    def __init__(self, text: str, path: Optional[Path] = None, is_dir: bool = False):
+        self.path = path
+        self.is_dir = is_dir
+        self.text_widget = Text(text)
+        super().__init__(
+            AttrMap(
+                self.text_widget,
+                "file",
+                "selected"
+            )
+        )
+
+    def selectable(self):
+        return True
+
+    def keypress(self, size, key):
+        return key
+
+    def get_text(self) -> str:
+        return self.text_widget.text
+
+
+class FileNavigatorTUI:
+    """Urwid file navigator (no own MainLoop)."""
+
+    palette = [
+        ('header', 'light cyan', 'dark blue'),
+        ('body', 'white', 'dark gray'),
+        ('footer', 'light gray', 'dark blue'),
+        ('selected', 'black', 'light cyan'),
+        ('dir', 'light blue', 'dark gray'),
+        ('file', 'light gray', 'dark gray'),
+        ('selected_file', 'light green', 'dark gray'),
+        ('error', 'light red', 'dark gray'),
+        ('success', 'light green', 'dark gray'),
+        ('info', 'light cyan', 'dark gray'),
+        ('button', 'white', 'dark blue'),
+        ('button_focus', 'black', 'light cyan'),
+    ]
+
+    def __init__(self, template_name: str, main_loop=None, on_done: Optional[Callable[[List[str]], None]] = None):
         self.template_name = template_name
-        self.base_dir = Path(initial_dir).resolve()
+        self.main_loop = main_loop
+        self.on_done = on_done
 
-        # Create temp directory for the template
         self.temp_dir = Path(tempfile.mkdtemp()) / template_name
         self.temp_dir.mkdir(parents=True, exist_ok=True)
-
-        # Start at the temp directory root
         self.current_dir = self.temp_dir
+        self.selected_files: List[str] = []
+        self.result_files: List[str] = []
+        self.done = False
+        self.dialog_active = False
+        self.overlay = None
 
-        # Track selected files - automatically add created files
-        self.selected_paths = []
-        self.should_cleanup = True
+        # Build the UI
+        self.top_widget = self._build_main_view()
 
-    def run(self) -> List[str]:
-        """
-        Run the file manager interface.
+    def _build_main_view(self) -> Widget:
+        """Build the main view."""
+        self.header_text = Text(
+            f" File Navigator - {self.template_name} ",
+            align='center'
+        )
+        self.header = AttrMap(self.header_text, 'header')
 
-        Returns:
-            List of selected file paths
-        """
-        click.echo("\n" + "=" * 60)
-        click.echo(f"FILE MANAGER - {self.template_name}")
-        click.echo("=" * 60)
-        click.echo(f"Working in: {self.temp_dir}")
-        click.echo("Create your project structure here. Files/directories you")
-        click.echo("create will be added to your template.")
-        click.echo("NOTE: Created files are automatically selected!")
-        click.echo("=" * 60)
+        self.path_text = Text(f"📂 {self.current_dir}", align='center')
+        self.path_bar = AttrMap(self.path_text, 'info')
 
-        return self._main_menu()
+        # File list
+        self.file_list = self._build_file_list()
+        self.file_list_walker = SimpleListWalker(self.file_list)
+        self.body = ListBox(self.file_list_walker)
 
-    def _main_menu(self) -> List[str]:
-        """Main file manager menu."""
-        selected = self.selected_paths
+        # Status bar
+        self.status_text = Text("", align='center')
+        self.status_bar = AttrMap(self.status_text, 'footer')
 
-        while True:
-            self._display_current_directory()
-            items = self._get_directory_items()
+        # Action buttons
+        self.actions = self._build_actions()
 
-            click.echo("\nCOMMANDS:")
-            click.echo("  [n] Navigate into directory")
-            click.echo("  [..] Go up one level")
-            click.echo("  [d] Create directory")
-            click.echo("  [f] Create file (auto-selected)")
-            click.echo("  [s] Select/unselect file(s) for template")
-            click.echo("  [v] View file content")
-            click.echo("  [e] Edit file")
-            click.echo("  [r] Rename/Delete item")
-            click.echo("  [c] Change directory by path")
-            click.echo("  [p] Preview template structure")
-            click.echo("  [q] Quit and return selected files")
+        # Layout
+        content = Pile([
+            ('pack', self.header),
+            ('pack', Divider('─')),
+            ('pack', self.path_bar),
+            ('pack', Divider('─')),
+            self.body,
+            ('pack', Divider('─')),
+            ('pack', self.actions),
+            ('pack', Divider('─')),
+            ('pack', self.status_bar),
+        ])
 
-            # Show items with numbers
-            click.echo("\nITEMS:")
-            if self.current_dir != self.temp_dir:
-                click.echo("  [..] 📁 .. (parent directory)")
+        return content
 
-            # Show items
-            if items:
-                for i, item in enumerate(items, 1):
-                    icon = "📁" if item[1] else "📄"
-                    file_path = str(self.current_dir / item[0])
-                    if file_path in selected:
-                        icon = "★ " + icon
-                    click.echo(f"  [{i:2d}] {icon} {item[0]}")
-            else:
-                click.echo("  (empty directory)")
+    def _build_file_list(self) -> List[Widget]:
+        """Build the file list widgets."""
+        widgets = []
 
-            if selected:
-                click.echo(f"\nSelected: {len(selected)} files")
-                # Show selected files
-                for f in selected:
-                    click.echo(f"  ✓ {Path(f).name}")
+        # Add parent directory if not at root
+        if self.current_dir != self.temp_dir:
+            widgets.append(
+                FileEntry("  [..] 📁 .. (parent)", path=self.current_dir.parent, is_dir=True)
+            )
 
-            choice = click.prompt("\nEnter number, or command", default="", show_default=False)
-
-            if choice.lower() == 'q':
-                # Return selected files
-                return selected
-            elif choice.lower() == '..':
-                if self.current_dir != self.temp_dir:
-                    self.current_dir = self.current_dir.parent
-            elif choice.lower() == 'd':
-                self._create_directory()
-            elif choice.lower() == 'f':
-                self._create_file(selected)
-            elif choice.lower() == 's':
-                self._select_files(items, selected)
-            elif choice.lower() == 'v':
-                self._view_file(items)
-            elif choice.lower() == 'e':
-                self._edit_file(items)
-            elif choice.lower() == 'r':
-                self._rename_or_delete(items, selected)
-            elif choice.lower() == 'c':
-                self._change_directory()
-            elif choice.lower() == 'n':
-                self._navigate_to_item(items)
-            elif choice.lower() == 'p':
-                self._preview_structure()
-            else:
-                # Try to navigate by number or select file
-                if choice.isdigit():
-                    try:
-                        idx = int(choice) - 1
-                        if 0 <= idx < len(items):
-                            item_name, is_dir = items[idx]
-                            if is_dir:
-                                self.current_dir = self.current_dir / item_name
-                            else:
-                                # Show file content
-                                file_path = self.current_dir / item_name
-                                self._show_file_content(file_path)
-                        else:
-                            click.echo("  Invalid selection.")
-                    except ValueError:
-                        click.echo(f"  Invalid selection.")
-                else:
-                    click.echo(f"  Unknown command: {choice}")
-
-    def _display_current_directory(self):
-        """Display the current directory path."""
-        # Show relative path from temp_dir
         try:
-            rel_path = self.current_dir.relative_to(self.temp_dir)
-            if str(rel_path) == '.':
-                display_path = "/"
-            else:
-                display_path = f"/{rel_path}"
-        except ValueError:
-            display_path = str(self.current_dir)
-
-        click.echo("\n" + "=" * 60)
-        click.echo(f"📂 {self.template_name}{display_path}")
-        click.echo("=" * 60)
-
-    def _get_directory_items(self) -> List[Tuple[str, bool]]:
-        """Get items in current directory."""
-        items = []
-        try:
-            for item in sorted(self.current_dir.iterdir()):
+            items = sorted(self.current_dir.iterdir())
+            for item in items:
                 if item.name.startswith('.'):
                     continue
                 is_dir = item.is_dir()
-                items.append((item.name, is_dir))
-        except PermissionError:
-            click.echo("  Permission denied to read this directory.")
-        except FileNotFoundError:
-            click.echo("  Directory not found. Returning to root.")
-            self.current_dir = self.temp_dir
-        return items
+                icon = "📁" if is_dir else "📄"
+                file_path = str(item)
 
-    def _navigate_to_item(self, items: List[Tuple[str, bool]]):
-        """Navigate to a directory."""
-        dirs = [(name, is_dir) for name, is_dir in items if is_dir]
-        if not dirs:
-            click.echo("  No directories in this location.")
-            return
-
-        click.echo("Select directory to navigate into:")
-        for i, (name, _) in enumerate(dirs, 1):
-            click.echo(f"  [{i}] {name}")
-
-        choice = click.prompt("Number", default="", show_default=False)
-        try:
-            idx = int(choice) - 1
-            if 0 <= idx < len(dirs):
-                name, _ = dirs[idx]
-                self.current_dir = self.current_dir / name
-            else:
-                click.echo("  Invalid selection.")
-        except ValueError:
-            click.echo("  Please enter a number.")
-
-    def _create_directory(self):
-        """Create a new directory."""
-        name = click.prompt("Directory name (e.g., src/)", default="", show_default=False)
-        if name:
-            # Remove trailing slash if present
-            name = name.rstrip('/')
-            # Remove any path separators - only allow single directory names
-            if '/' in name or '\\' in name:
-                click.echo("  Please enter a single directory name (not a path).")
-                return
-
-            new_dir = self.current_dir / name
-            try:
-                new_dir.mkdir()
-                click.echo(f"  ✓ Created directory: {name}/")
-            except FileExistsError:
-                click.echo(f"  Directory '{name}' already exists.")
-            except Exception as e:
-                click.echo(f"  Error creating directory: {e}")
-
-    def _create_file(self, selected: List[str]):
-        """Create a new file and automatically add to selection."""
-        name = click.prompt("File name (e.g., main.py)", default="", show_default=False)
-        if name:
-            # Remove any path separators - only allow single file names
-            if '/' in name or '\\' in name:
-                click.echo("  Please enter a single file name (not a path).")
-                return
-
-            new_file = self.current_dir / name
-            try:
-                content = click.prompt("File content (or @reference)", default="", show_default=False)
-                new_file.write_text(content if content else "")
-                click.echo(f"  ✓ Created file: {name}")
-
-                # Auto-select the created file
-                file_path = str(new_file)
-                if file_path not in selected:
-                    selected.append(file_path)
-                    click.echo(f"  ✓ Auto-selected: {name}")
+                if is_dir:
+                    widgets.append(
+                        FileEntry(f"  {icon} {item.name}/", path=item, is_dir=True)
+                    )
                 else:
-                    click.echo(f"  ⚠ File already selected: {name}")
-            except Exception as e:
-                click.echo(f"  Error creating file: {e}")
+                    prefix = "★ " if file_path in self.selected_files else "  "
+                    entry = FileEntry(f"  {prefix}{icon} {item.name}", path=item, is_dir=False)
+                    widgets.append(entry)
+        except PermissionError:
+            widgets.append(
+                AttrMap(
+                    Text("  Permission denied", align='center'),
+                    'error'
+                )
+            )
 
-    def _select_files(self, items: List[Tuple[str, bool]], selected: List[str]):
-        """Select/unselect files for the template."""
-        files = [(name, False) for name, is_dir in items if not is_dir]
+        if not widgets:
+            widgets.append(
+                AttrMap(
+                    Text("  (empty directory)", align='center'),
+                    'info'
+                )
+            )
 
-        if not files:
-            click.echo("  No files in this directory.")
+        # Info and key hints
+        widgets.append(Text("", align='center'))
+        widgets.append(Text(
+            f" Selected: {len(self.selected_files)} files",
+            align='center'
+        ))
+        widgets.append(Text("", align='center'))
+        widgets.append(Text(
+            " [↑/↓] Navigate  [Enter] Select/Open  [s] Toggle selection  [a] Select all  [c] Clear",
+            align='center'
+        ))
+        widgets.append(Text(
+            " [d] New dir  [f] New file  [q] Quit  [Space] Toggle",
+            align='center'
+        ))
+
+        return widgets
+
+    def _build_actions(self) -> Widget:
+        """Build action buttons using GridFlow."""
+
+        def on_new_dir(btn):
+            self._create_directory_dialog()
+
+        def on_new_file(btn):
+            self._create_file_dialog()
+
+        def on_select_all(btn):
+            self._select_all()
+
+        def on_clear(btn):
+            self._clear_selection()
+
+        def on_done(btn):
+            self._finish()
+
+        def on_quit(btn):
+            self._quit()
+
+        buttons = [
+            Button("New Dir", on_press=on_new_dir),
+            Button("New File", on_press=on_new_file),
+            Button("Select All", on_press=on_select_all),
+            Button("Clear", on_press=on_clear),
+            Button("Done", on_press=on_done),
+            Button("Quit", on_press=on_quit),
+        ]
+
+        return GridFlow(
+            buttons,
+            cell_width=14,
+            h_sep=1,
+            v_sep=0,
+            align='center'
+        )
+
+    def _handle_input(self, key: str) -> bool:
+        """Handle global input for navigator."""
+        if self.dialog_active:
+            return False
+
+        if key == 'q':
+            self._quit()
+            return True
+        elif key == 'enter':
+            self._select_current()
+            return True
+        elif key in ('s', ' '):
+            self._toggle_selection()
+            return True
+        elif key == 'a':
+            self._select_all()
+            return True
+        elif key == 'c':
+            self._clear_selection()
+            return True
+        elif key == 'd':
+            self._create_directory_dialog()
+            return True
+        elif key == 'f':
+            self._create_file_dialog()
+            return True
+        return False
+
+    def _navigate(self, direction: int):
+        """Navigate the list."""
+        list_walker = self.file_list_walker
+        current_pos = self.body.get_focus()[1]
+        if current_pos is None:
+            return
+        new_pos = current_pos + direction
+        if 0 <= new_pos < len(list_walker):
+            self.body.set_focus(new_pos)
+
+    def _select_current(self):
+        """Select or open the current item."""
+        focus = self.body.get_focus()[0]
+        if not focus:
             return
 
-        click.echo("\nSelect/unselect files:")
-        click.echo("Enter numbers separated by commas (e.g., 1,3,5) or ranges (e.g., 1-5)")
-        click.echo("  [a] Select all files")
-        click.echo("  [c] Clear selection")
-        click.echo("  [d] Done selecting")
-
-        for i, (name, _) in enumerate(files, 1):
-            file_path = str(self.current_dir / name)
-            selected_mark = "✓" if file_path in selected else " "
-            click.echo(f"  [{selected_mark}] [{i}] {name}")
-
-        choice = click.prompt("Selection", default="d", show_default=False)
-
-        if choice.lower() == 'a':
-            # Select all files
-            for name, _ in files:
-                file_path = str(self.current_dir / name)
-                if file_path not in selected:
-                    selected.append(file_path)
-            click.echo(f"  Selected {len(files)} files")
-        elif choice.lower() == 'c':
-            # Clear selection of current directory files
-            for name, _ in files:
-                file_path = str(self.current_dir / name)
-                if file_path in selected:
-                    selected.remove(file_path)
-            click.echo("  Selection cleared")
-        elif choice.lower() == 'd':
+        text = self._get_widget_text(focus)
+        if not text:
             return
+
+        # Check if it's a directory
+        if "📁" in text:
+            if "📁 .." in text:
+                parent = self.current_dir.parent
+                if parent != self.current_dir:
+                    self.current_dir = parent
+                    self._refresh()
+                    self._update_status("📂 Navigated up")
+            else:
+                name = text.split("📁")[1].strip().rstrip('/')
+                new_dir = self.current_dir / name
+                if new_dir.exists() and new_dir.is_dir():
+                    self.current_dir = new_dir
+                    self._refresh()
+                    self._update_status(f"📂 Navigated to: {name}")
+        elif "📄" in text:
+            self._toggle_selection()
+
+    def _toggle_selection(self):
+        """Toggle selection of the current file."""
+        focus = self.body.get_focus()[0]
+        if not focus:
+            return
+
+        text = self._get_widget_text(focus)
+        if not text or "📁" in text:
+            return
+
+        name = text.split("📄")[1].strip()
+        if "★" in name:
+            name = name.replace("★", "").strip()
+        file_path = str(self.current_dir / name)
+
+        if file_path in self.selected_files:
+            self.selected_files.remove(file_path)
+            self._update_status(f"Deselected: {name}")
         else:
-            # Parse selection
-            parts = choice.split(',')
-            for part in parts:
-                part = part.strip()
-                if '-' in part:
-                    try:
-                        start, end = map(int, part.split('-'))
-                        for i in range(start - 1, end):
-                            if 0 <= i < len(files):
-                                name, _ = files[i]
-                                file_path = str(self.current_dir / name)
-                                if file_path in selected:
-                                    selected.remove(file_path)
-                                    click.echo(f"  Deselected: {name}")
-                                else:
-                                    selected.append(file_path)
-                                    click.echo(f"  Selected: {name}")
-                    except ValueError:
-                        pass
-                else:
-                    try:
-                        idx = int(part) - 1
-                        if 0 <= idx < len(files):
-                            name, _ = files[idx]
-                            file_path = str(self.current_dir / name)
-                            if file_path in selected:
-                                selected.remove(file_path)
-                                click.echo(f"  Deselected: {name}")
-                            else:
-                                selected.append(file_path)
-                                click.echo(f"  Selected: {name}")
-                    except ValueError:
-                        pass
-            click.echo(f"  Updated selection")
+            self.selected_files.append(file_path)
+            self._update_status(f"Selected: {name}")
 
-    def _view_file(self, items: List[Tuple[str, bool]]):
-        """View file content."""
-        files = [(name, False) for name, is_dir in items if not is_dir]
-        if not files:
-            click.echo("  No files in this directory.")
+        self._refresh()
+
+    def _select_all(self):
+        """Select all files in current directory."""
+        for item in self.current_dir.iterdir():
+            if item.is_file() and not item.name.startswith('.'):
+                file_path = str(item)
+                if file_path not in self.selected_files:
+                    self.selected_files.append(file_path)
+        self._refresh()
+        self._update_status(f"Selected all files ({len(self.selected_files)})")
+
+    def _clear_selection(self):
+        """Clear selection."""
+        self.selected_files.clear()
+        self._refresh()
+        self._update_status("Selection cleared")
+
+    def _get_widget_text(self, widget) -> Optional[str]:
+        """Extract text from a widget."""
+        if isinstance(widget, FileEntry):
+            return widget.get_text()
+        if isinstance(widget, AttrMap):
+            return self._get_widget_text(widget.original_widget)
+        if isinstance(widget, Text):
+            return widget.text
+        return None
+
+    def _refresh(self):
+        """Refresh the file list."""
+        if not self.main_loop:
             return
 
-        click.echo("\nSelect file to view:")
-        for i, (name, _) in enumerate(files, 1):
-            click.echo(f"  [{i}] {name}")
-
-        choice = click.prompt("Number", default="", show_default=False)
         try:
-            idx = int(choice) - 1
-            if 0 <= idx < len(files):
-                file_path = self.current_dir / files[idx][0]
-                self._show_file_content(file_path)
-            else:
-                click.echo("  Invalid selection.")
-        except ValueError:
-            click.echo("  Please enter a number.")
+            old_focus = self.body.get_focus()[1]
+        except Exception:
+            old_focus = 0
 
-    def _show_file_content(self, file_path: Path):
-        """Show content of a file."""
+        new_widgets = self._build_file_list()
+        self.file_list_walker.clear()
+        self.file_list_walker.extend(new_widgets)
+        self.path_text.set_text(f"📂 {self.current_dir}")
+
+        if new_widgets:
+            new_focus = min(old_focus, len(new_widgets) - 1)
+            try:
+                self.body.set_focus(new_focus)
+            except Exception:
+                pass
+
+    def _update_status(self, message: str):
+        """Update the status bar."""
+        self.status_text.set_text(message)
+
+    def _show_dialog(self, dialog: Widget, focus_position: int = 0):
+        """Show a dialog overlay."""
+        self.dialog_active = True
+        self.overlay = urwid.Overlay(
+            dialog,
+            self.top_widget,
+            align='center',
+            width=('relative', 60),
+            valign='middle',
+            height='pack',
+        )
+        if self.main_loop:
+            self.main_loop.widget = self.overlay
+
+        # Focus the desired widget
+        if focus_position is not None:
+            try:
+                pile = dialog.original_widget
+                if isinstance(pile, urwid.Pile):
+                    pile.set_focus(focus_position)
+            except Exception:
+                pass
+
+    def _close_dialog(self):
+        """Close the current dialog."""
+        self.dialog_active = False
+        if self.main_loop:
+            self.main_loop.widget = self.top_widget
+            self._refresh()
+            self.main_loop.draw_screen()
+
+    def _focus_edit(self, dialog: Widget, edit_index: int = 2):
+        """Focus the Edit widget inside a dialog."""
         try:
-            if file_path.stat().st_size > 1024 * 10:  # > 10KB
-                click.echo(f"  File is too large to display ({file_path.stat().st_size} bytes)")
-                return
+            if hasattr(dialog, 'original_widget') and hasattr(dialog.original_widget, 'set_focus'):
+                dialog.original_widget.set_focus(edit_index)
+            elif hasattr(dialog, 'set_focus'):
+                dialog.set_focus(edit_index)
+        except Exception:
+            pass
 
-            content = file_path.read_text()
-            click.echo("\n" + "-" * 40)
-            click.echo(f"📄 {file_path.name}:")
-            click.echo("-" * 40)
-            click.echo(content[:500])  # Show first 500 chars
-            if len(content) > 500:
-                click.echo("... (truncated)")
-            click.echo("-" * 40)
-        except Exception as e:
-            click.echo(f"  Error reading file: {e}")
+    def _create_directory_dialog(self):
+        """Show dialog to create a directory."""
+        edit = Edit("Directory name: ")
+        msg = Text("", align='center')
 
-    def _edit_file(self, items: List[Tuple[str, bool]]):
-        """Edit a file."""
-        files = [(name, False) for name, is_dir in items if not is_dir]
-        if not files:
-            click.echo("  No files in this directory.")
-            return
+        def on_create(btn):
+            name = edit.edit_text.strip()
+            if name:
+                name = name.rstrip('/')
+                if '/' in name or '\\' in name:
+                    msg.set_text(("error", "❌ Use single directory name only"))
+                    return
+                new_dir = self.current_dir / name
+                try:
+                    new_dir.mkdir()
+                    msg.set_text(("success", f"✅ Created: {name}"))
+                    self._refresh()
+                    edit.set_edit_text("")
+                    self._update_status(f"Created directory: {name}")
+                except FileExistsError:
+                    msg.set_text(("error", f"❌ '{name}' already exists"))
+                except Exception as e:
+                    msg.set_text(("error", f"❌ Error: {e}"))
 
-        click.echo("\nSelect file to edit:")
-        for i, (name, _) in enumerate(files, 1):
-            click.echo(f"  [{i}] {name}")
+        def on_done(btn):
+            self._close_dialog()
 
-        choice = click.prompt("Number", default="", show_default=False)
+        content = Pile([
+            Text("CREATE DIRECTORY", align="center"),
+            Divider("─"),
+            edit,
+            msg,
+            GridFlow(
+                [
+                    Button("Create", on_press=on_create),
+                    Button("Close", on_press=on_done),
+                ],
+                cell_width=12,
+                h_sep=1,
+                v_sep=0,
+                align='center'
+            ),
+        ])
+        dialog = LineBox(content, title=" New Directory ")
+        self._show_dialog(dialog, focus_position=2)
+
+    def _create_file_dialog(self):
+        """Show dialog to create a file."""
+        path_edit = Edit("File name: ")
+        content_edit = Edit("Content (@ref): ")
+        msg = Text("", align='center')
+
+        def on_create(btn):
+            name = path_edit.edit_text.strip()
+            content = content_edit.edit_text.strip()
+            if name:
+                if '/' in name or '\\' in name:
+                    msg.set_text(("error", "❌ Use single filename only"))
+                    return
+                new_file = self.current_dir / name
+                try:
+                    new_file.write_text(content)
+                    file_path = str(new_file)
+                    if file_path not in self.selected_files:
+                        self.selected_files.append(file_path)
+                    msg.set_text(("success", f"✅ Created and selected: {name}"))
+                    self._refresh()
+                    path_edit.set_edit_text("")
+                    content_edit.set_edit_text("")
+                    self._update_status(f"Created file: {name}")
+                except Exception as e:
+                    msg.set_text(("error", f"❌ Error: {e}"))
+
+        def on_done(btn):
+            self._close_dialog()
+
+        content = Pile([
+            Text("CREATE FILE", align="center"),
+            Divider("─"),
+            path_edit,
+            content_edit,
+            msg,
+            GridFlow(
+                [
+                    Button("Create", on_press=on_create),
+                    Button("Close", on_press=on_done),
+                ],
+                cell_width=12,
+                h_sep=1,
+                v_sep=0,
+                align='center'
+            ),
+        ])
+        dialog = LineBox(content, title=" New File ")
+        self._show_dialog(dialog, focus_position=2)
+
+    def _finish(self):
+        """Finish and return selected files."""
+        self.done = True
+        self.result_files = self.selected_files.copy()
+        if self.on_done:
+            self.on_done(self.result_files)
+
+    def _quit(self):
+        """Quit without saving."""
+        if self.selected_files:
+            def on_quit(btn):
+                self.result_files = []
+                self.done = True
+                if self.on_done:
+                    self.on_done([])
+
+            def on_cancel(btn):
+                self._close_dialog()
+
+            content = Pile([
+                Text("Exit without saving selected files?", align="center"),
+                GridFlow(
+                    [
+                        Button("Yes", on_press=on_quit),
+                        Button("No", on_press=on_cancel),
+                    ],
+                    cell_width=10,
+                    h_sep=2,
+                    v_sep=0,
+                    align='center'
+                ),
+            ])
+            dialog = LineBox(content, title=" Confirm ")
+            self._show_dialog(dialog)
+        else:
+            self.result_files = []
+            self.done = True
+            if self.on_done:
+                self.on_done([])
+
+    def run(self) -> List[str]:
+        """This method should not be called when embedded; kept for backward compatibility."""
+        # If someone calls run, we create a temporary loop (should not happen in normal usage).
+        # We'll still implement it to avoid crashes, but it won't be used in the integrated flow.
+        loop = urwid.MainLoop(
+            self.top_widget,
+            palette=self.palette,
+            unhandled_input=self._handle_input
+        )
         try:
-            idx = int(choice) - 1
-            if 0 <= idx < len(files):
-                file_path = self.current_dir / files[idx][0]
-                current_content = file_path.read_text() if file_path.exists() else ""
-                click.echo(f"\nCurrent content:\n{'-' * 40}")
-                click.echo(current_content[:200])
-                if len(current_content) > 200:
-                    click.echo("...")
-                click.echo("-" * 40)
-
-                new_content = click.prompt("New content (or @reference)", default="", show_default=False)
-                if new_content:
-                    file_path.write_text(new_content)
-                    click.echo(f"  ✓ Updated: {file_path.name}")
-                else:
-                    click.echo("  No changes made.")
-            else:
-                click.echo("  Invalid selection.")
-        except ValueError:
-            click.echo("  Please enter a number.")
-
-    def _rename_or_delete(self, items: List[Tuple[str, bool]], selected: List[str]):
-        """Rename or delete a file/directory."""
-        click.echo("\nSelect item to rename/delete:")
-        for i, (name, is_dir) in enumerate(items, 1):
-            icon = "📁" if is_dir else "📄"
-            click.echo(f"  [{i}] {icon} {name}")
-
-        choice = click.prompt("Number", default="", show_default=False)
-        try:
-            idx = int(choice) - 1
-            if 0 <= idx < len(items):
-                name, is_dir = items[idx]
-                item_path = self.current_dir / name
-
-                click.echo(f"\nItem: {name}")
-                click.echo("  [r] Rename")
-                click.echo("  [d] Delete")
-
-                action = click.prompt("Action", default="", show_default=False)
-                if action.lower() == 'r':
-                    new_name = click.prompt("New name", default="", show_default=False)
-                    if new_name:
-                        # Remove any path separators
-                        new_name = new_name.replace('/', '').replace('\\', '')
-                        if new_name:
-                            new_path = self.current_dir / new_name
-                            old_path_str = str(item_path)
-                            item_path.rename(new_path)
-                            # Update selection if file was selected
-                            if old_path_str in selected:
-                                selected.remove(old_path_str)
-                                selected.append(str(new_path))
-                            click.echo(f"  ✓ Renamed to: {new_name}")
-                        else:
-                            click.echo("  Invalid name.")
-                elif action.lower() == 'd':
-                    if click.confirm(f"Delete {name}?"):
-                        old_path_str = str(item_path)
-                        if is_dir:
-                            # Remove directory and its contents
-                            shutil.rmtree(item_path)
-                        else:
-                            item_path.unlink()
-                        # Remove from selection if it was selected
-                        if old_path_str in selected:
-                            selected.remove(old_path_str)
-                        click.echo(f"  ✓ Deleted: {name}")
-                else:
-                    click.echo("  Invalid action.")
-            else:
-                click.echo("  Invalid selection.")
-        except ValueError:
-            click.echo("  Please enter a number.")
-        except Exception as e:
-            click.echo(f"  Error: {e}")
-
-    def _change_directory(self):
-        """Change to a different directory within the temp folder."""
-        click.echo(f"Current temp directory: {self.temp_dir}")
-        click.echo("Enter a relative path from the temp directory (e.g., src/, tests/)")
-        new_path = click.prompt("Path", default=".", show_default=False)
-
-        try:
-            if new_path == '.':
-                self.current_dir = self.temp_dir
-            elif new_path == '..':
-                self.current_dir = self.temp_dir
-            else:
-                # Remove leading/trailing slashes
-                new_path = new_path.strip('/\\')
-                path = self.temp_dir / new_path
-                if path.exists() and path.is_dir():
-                    self.current_dir = path.resolve()
-                else:
-                    click.echo(f"  Directory doesn't exist: {new_path}")
-                    if click.confirm("Create it?"):
-                        path.mkdir(parents=True)
-                        self.current_dir = path
-                        click.echo(f"  ✓ Created and navigated to: {new_path}")
-        except Exception as e:
-            click.echo(f"  Error: {e}")
-
-    def _preview_structure(self):
-        """Preview the current template structure."""
-        click.echo("\n[TEMPLATE STRUCTURE PREVIEW]")
-        click.echo("=" * 50)
-
-        if not any(self.temp_dir.iterdir()):
-            click.echo("  No files or directories created yet.")
-            return
-
-        # Build tree structure
-        self._print_tree(self.temp_dir, "")
-        click.echo("=" * 50)
-
-    def _print_tree(self, path: Path, prefix: str, is_last: bool = True):
-        """Print directory tree structure."""
-        # Get items
-        items = []
-        try:
-            for item in sorted(path.iterdir()):
-                if item.name.startswith('.'):
-                    continue
-                items.append(item)
-        except PermissionError:
-            return
-
-        if not items:
-            return
-
-        for i, item in enumerate(items):
-            is_last_item = (i == len(items) - 1)
-            connector = "└── " if is_last_item else "├── "
-            # Check if file is selected
-            file_path = str(item)
-            if file_path in self.selected_paths:
-                click.echo(f"{prefix}{connector}★ {item.name}{'/' if item.is_dir() else ''}")
-            else:
-                click.echo(f"{prefix}{connector}{item.name}{'/' if item.is_dir() else ''}")
-
-            if item.is_dir():
-                new_prefix = prefix + ("    " if is_last_item else "│   ")
-                self._print_tree(item, new_prefix, is_last_item)
-
-    def cleanup(self):
-        """Clean up the temporary directory."""
-        if self.should_cleanup:
+            loop.run()
+        except KeyboardInterrupt:
+            pass
+        finally:
             shutil.rmtree(self.temp_dir, ignore_errors=True)
+        return self.result_files

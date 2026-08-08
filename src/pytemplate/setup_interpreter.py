@@ -9,6 +9,11 @@ import threading
 from pathlib import Path
 from tqdm import tqdm
 
+from pathlib import Path
+
+TEMPLATES_DIR = Path(__file__).parent / "templates"
+
+
 def find_python_versions():
     """Find all available Python versions on the system."""
     versions = {}
@@ -425,12 +430,45 @@ def make_folder(project_dir, folder_path):
     print(f"[FOLDER] Created folder: {folder_path}")
 
 
-def make_file(project_dir, file_path, content=""):
-    """Create a file in the project directory."""
-    full_path = Path(project_dir) / file_path
+def make_file(project_dir, file_path, content):
+    """Create a file, optionally loading content from a @reference."""
+
+    # Handle:
+    # makefile made.md: @general-readme
+    if ":" in file_path:
+        file_path, inline_content = file_path.split(":", 1)
+        file_path = file_path.strip()
+
+        if not content:
+            content = inline_content.strip()
+
+    file_path = file_path.strip()
+
+    full_path = project_dir / file_path
     full_path.parent.mkdir(parents=True, exist_ok=True)
-    full_path.write_text(content)
-    print(f"[FILE] Created file: {file_path}")
+
+    # Resolve @reference
+    if content and content.strip().startswith("@"):
+        reference_name = content.strip()
+
+        templates_dir = Path(__file__).parent / "templates"
+        reference_path = templates_dir / reference_name
+
+        print(f"[REF] Looking for: {reference_path}")
+
+        if not reference_path.exists():
+            raise RuntimeError(
+                f"Reference file not found: {reference_path}"
+            )
+
+        content = reference_path.read_text(encoding="utf-8")
+
+        print(f"[REF] Loaded: {reference_path}")
+
+    full_path.write_text(
+        content or "",
+        encoding="utf-8"
+    )
 
 
 def ask_input(prompt, default=None, var_name=None):
@@ -486,11 +524,19 @@ def run_setup_commands(project_dir, commands, context=None):
             for folder in parts[1:]:
                 make_folder(project_dir, folder)
 
+
         elif action == "makefile":
+
             if len(parts) >= 2:
                 file_path = parts[1]
+
                 content = " ".join(parts[2:]) if len(parts) > 2 else ""
-                make_file(project_dir, file_path, content)
+
+                make_file(
+                    project_dir,
+                    file_path,
+                    content,
+                )
 
         elif action == "initgit":
             with tqdm(total=100, desc="Initializing git", bar_format="{l_bar}{bar}| {n_fmt}/{total_fmt}") as pbar:

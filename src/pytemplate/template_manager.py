@@ -1,4 +1,4 @@
-﻿"""Template manager for PyTemplate - Interactive template navigator."""
+﻿"""Template manager for PyTemplate - Interactive template navigator (TUI)."""
 
 import click
 import os
@@ -10,6 +10,9 @@ import sys
 from pathlib import Path
 from typing import List, Dict, Optional, Tuple
 from datetime import datetime
+
+# Import the TUI runner (no circular import since we pass the manager)
+from .template_manager_tui import run_template_manager_tui
 
 
 def color(text: str, fg: str = None, bold: bool = False, dim: bool = False) -> str:
@@ -229,176 +232,12 @@ def launch_template_downloader():
         return False
 
 
-
-    script_path.write_text(wizard_content)
-    click.echo(color(f"[OK] Created download template wizard at: {script_path}", fg="green"))
-
-
 def interactive_template_manager(templates_dir: Path):
-    """Run the interactive template navigator."""
+    """Run the interactive template manager (TUI)."""
+    # Create the manager instance
     manager = TemplateManager(templates_dir)
-
-    while True:
-        click.echo("\n" + color("=" * 60, fg="blue", bold=True))
-        click.echo(color("TEMPLATE NAVIGATOR", fg="cyan", bold=True))
-        click.echo(color("=" * 60, fg="blue", bold=True))
-
-        # Show templates with numbers
-        templates = manager.list_templates()
-        if not templates:
-            click.echo(color("  No templates found.", fg="yellow"))
-            click.echo("\n  " + color("[c]", fg="green", bold=True) + " Create new template")
-            click.echo("  " + color("[i]", fg="green", bold=True) + " Import template")
-            click.echo("  " + color("[w]", fg="cyan", bold=True) + " Download template (from registry)")
-            click.echo("  " + color("[q]", fg="red", bold=True) + " Quit")
-            choice = click.prompt("\nChoice", default="q", show_default=False)
-
-            if choice.lower() == 'c':
-                launch_template_builder()
-                continue
-            elif choice.lower() == 'i':
-                path = click.prompt("File path to import", type=str)
-                manager.import_template(Path(path))
-                continue
-            elif choice.lower() == 'w':
-                launch_template_downloader()
-                continue
-            elif choice.lower() == 'q':
-                break
-            continue
-
-        click.echo("\n" + color("TEMPLATES:", fg="yellow", bold=True))
-        click.echo(color("-" * 60, fg="blue"))
-        for i, t in enumerate(templates, 1):
-            desc = f" - {t['description'][:40]}" if t.get('description') else ""
-            click.echo(f"  {color(f'[{i:2d}]', fg='cyan')} {color(t['name'], fg='white', bold=True):<20}{color(desc, fg='white', dim=True)}")
-
-        click.echo("\n" + color("-" * 60, fg="blue"))
-        click.echo(color("ACTIONS:", fg="yellow", bold=True))
-        click.echo("  " + color("[number]", fg="cyan") + "  Select template to view/use")
-        click.echo("  " + color("[c]", fg="green", bold=True) + "       Create new template")
-        click.echo("  " + color("[d]", fg="red", bold=True) + "       Delete a template")
-        click.echo("  " + color("[r]", fg="magenta", bold=True) + "       Rename a template")
-        click.echo("  " + color("[e]", fg="blue", bold=True) + "       Export a template")
-        click.echo("  " + color("[i]", fg="green", bold=True) + "       Import a template")
-        click.echo("  " + color("[w]", fg="cyan", bold=True) + "       Download template (from registry)")
-        click.echo("  " + color("[q]", fg="red", bold=True) + "       Quit")
-        click.echo(color("=" * 60, fg="blue", bold=True))
-
-        choice = click.prompt("\nChoice", default="q", show_default=False)
-
-        if choice.lower() == 'q':
-            break
-
-        elif choice.lower() == 'c':
-            launch_template_builder()
-            continue
-
-        elif choice.lower() == 'w':
-            launch_template_downloader()
-            continue
-
-        elif choice.lower() == 'd':
-            name = click.prompt(color("Template name to delete", fg="red"), type=str)
-            manager.remove_template(name)
-            continue
-
-        elif choice.lower() == 'r':
-            old_name = click.prompt(color("Current template name", fg="magenta"), type=str)
-            new_name = click.prompt(color("New template name", fg="magenta"), type=str)
-            manager.rename_template(old_name, new_name)
-            continue
-
-        elif choice.lower() == 'e':
-            name = click.prompt(color("Template name to export", fg="blue"), type=str)
-            output_path = Path(click.prompt("Output path", type=str))
-            manager.export_template(name, output_path)
-            continue
-
-        elif choice.lower() == 'i':
-            source_path = Path(click.prompt("File path to import", type=str))
-            manager.import_template(source_path)
-            continue
-
-        else:
-            # Try to select by number
-            try:
-                idx = int(choice) - 1
-                if 0 <= idx < len(templates):
-                    template = templates[idx]
-                    click.echo("\n" + color("=" * 60, fg="blue", bold=True))
-                    click.echo(color(f"TEMPLATE: {template['name']}", fg="cyan", bold=True))
-                    click.echo(color("=" * 60, fg="blue", bold=True))
-
-                    if template.get('description'):
-                        click.echo(color(f"  Description: ", fg="yellow") + color(template['description'], fg="white"))
-                    if template.get('author'):
-                        click.echo(color(f"  Author: ", fg="yellow") + color(template['author'], fg="white"))
-                    if template.get('version'):
-                        click.echo(color(f"  Version: ", fg="yellow") + color(template['version'], fg="white"))
-                    if template.get('category'):
-                        click.echo(color(f"  Category: ", fg="yellow") + color(template['category'], fg="white"))
-                    if template.get('tags'):
-                        click.echo(color(f"  Tags: ", fg="yellow") + color(', '.join(template['tags']), fg="white"))
-
-                    # Show template content preview
-                    template_path = Path(template['path'])
-                    if template_path.exists():
-                        content = template_path.read_text()
-                        lines = content.split('\n')
-                        dirs = sum(1 for l in lines if l.strip().endswith('/') and not l.strip().startswith('['))
-                        files = sum(1 for l in lines if ':' in l and not l.strip().startswith('['))
-
-                        click.echo(color(f"\n  Statistics:", fg="yellow"))
-                        click.echo(color(f"    Directories: ", fg="white", dim=True) + color(str(dirs), fg="white"))
-                        click.echo(color(f"    Files: ", fg="white", dim=True) + color(str(files), fg="white"))
-
-                        if '[setup]' in content:
-                            click.echo(color(f"    Setup commands: ", fg="white", dim=True) + color("Yes", fg="green"))
-
-                        click.echo(color("\n  Preview (first 20 lines):", fg="yellow"))
-                        click.echo(color("  " + "-" * 40, fg="blue"))
-                        preview = '\n'.join(lines[:20])
-                        for line in preview.split('\n'):
-                            click.echo(color(f"  {line}", fg="white", dim=True))
-                        if len(lines) > 20:
-                            click.echo(color("  ...", fg="white", dim=True))
-                        click.echo(color("  " + "-" * 40, fg="blue"))
-
-                    click.echo("\n" + color("ACTIONS:", fg="yellow", bold=True))
-                    click.echo("  " + color("[u]", fg="green", bold=True) + " Use this template (create project)")
-                    click.echo("  " + color("[n]", fg="cyan", bold=True) + " Create new template (launch builder)")
-                    click.echo("  " + color("[v]", fg="blue", bold=True) + " View full template")
-                    click.echo("  " + color("[b]", fg="magenta", bold=True) + " Back to template list")
-
-                    action = click.prompt("\nAction", default="b", show_default=False)
-
-                    if action.lower() == 'u':
-                        project_name = click.prompt(color("Project name", fg="green"), type=str)
-                        click.echo(color(f"\nRunning: pytemplate create {project_name} --template {template['name']}", fg="yellow"))
-                        script_path = Path(__file__).parent / "cli.py"
-                        cmd = [sys.executable, str(script_path), "create", project_name, "--template", template['name']]
-                        try:
-                            subprocess.run(cmd)
-                        except Exception as e:
-                            click.echo(color(f"Error: {e}", fg="red"))
-                        continue
-                    elif action.lower() == 'n':
-                        launch_template_builder()
-                        continue
-                    elif action.lower() == 'v':
-                        click.echo("\n" + color("=" * 60, fg="blue", bold=True))
-                        click.echo(color(f"FULL TEMPLATE: {template['name']}", fg="cyan", bold=True))
-                        click.echo(color("=" * 60, fg="blue", bold=True))
-                        click.echo(color(template_path.read_text(), fg="white"))
-                        click.echo(color("=" * 60, fg="blue", bold=True))
-                        click.pause(color("Press Enter to continue...", fg="white", dim=True))
-                    else:
-                        continue
-                else:
-                    click.echo(color("Invalid selection.", fg="red"))
-            except ValueError:
-                click.echo(color(f"Unknown command: {choice}", fg="red"))
+    # Pass it to the TUI runner (no circular import)
+    run_template_manager_tui(manager)
 
 
 def register_commands(cli_group):
@@ -406,6 +245,6 @@ def register_commands(cli_group):
 
     @cli_group.command()
     def templates():
-        """Open interactive template navigator."""
+        """Open interactive template navigator (TUI)."""
         templates_dir = Path(__file__).parent / "templates"
         interactive_template_manager(templates_dir)

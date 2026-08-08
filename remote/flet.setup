@@ -1,4 +1,4 @@
-﻿# Flet project structure
+# Flet project structure
 {name}/src/
 {name}/assets/
 {name}/assets/images/
@@ -12,7 +12,7 @@
 
 # Project configuration
 {name}/pyproject.toml
-{name}/README.md @flet-readme
+{name}/README.md: @flet-readme
 {name}/.gitignore
 {name}/.env
 {name}/requirements.txt
@@ -28,11 +28,11 @@ ask "Flet version (latest, 0.21.0, 0.20.0)" default="latest" var="flet_version"
 makefile assets/themes/dark.json "{}"
 makefile assets/themes/light.json "{}"
 
-# Create requirements.txt with base content
-makefile requirements.txt "# Flet dependencies\n# Add your requirements here\n"
+# Create requirements.txt
+makefile requirements.txt
 
 # Edit requirements.txt to add flet
-editfile requirements.txt append "flet${flet_version != "latest" ? "==" + flet_version : ""}"
+editfile requirements.txt append "flet"
 
 # Also add some common development packages
 editfile requirements.txt append "python-dotenv>=1.0.0"

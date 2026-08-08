@@ -1,5 +1,5 @@
 [setup]
-makefile README.md "@general-readme"
-makefile main.py "@hello-world"
+makefile README.md @general-readme
+makefile main.py @hello-world
 makefile requirements.txt "# add requirements here"
 makevenv 3.14
